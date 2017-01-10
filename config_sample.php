@@ -47,4 +47,6 @@
 	// Two directories up? Set too "../../"
 	// etc...
 	$BOOTSTRAP_LOCATION_PREFIX = "";
+
+	$LOGFILE="/var/log/wol.log"
 ?>

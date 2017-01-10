@@ -1,4 +1,4 @@
-<?php /*
+<?PHP /*
 Remote Wake/Sleep-On-LAN Server
 https://github.com/sciguy14/Remote-Wake-Sleep-On-LAN-Server
 Original Author: Jeremy E. Blum (http://www.jeremyblum.com)
@@ -8,6 +8,7 @@ License: GPL v3 (http://www.gnu.org/licenses/gpl.html)
 
 //You should not need to edit this file. Adjust Parameters in the config file:
 require_once('config.php');
+
 
 //set headers that harden the HTTPS session
 if ($USE_HTTPS)
@@ -33,8 +34,91 @@ if (empty($_GET))
    header('Location: '. ($USE_HTTPS ? "https://" : "http://") . "$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]" . "?computer=0");
    exit;
 }
-else
+else{
    $_GET['computer'] = preg_replace("/[^0-9,.]/", "", $_GET['computer']);
+}
+
+$approved_wake = false;
+				$approved_sleep = false;
+				if ( isset($_GET['password']) )
+		                {
+                			$hash = hash("sha256", $_POST['password']);
+			                if ($hash == $APPROVED_HASH)
+			                {
+						if ($_GET['action'] == "wake")
+						{
+							$approved_wake = true;
+						}
+						elseif ($_GET['action'] == "sleep")
+						{
+							$approved_sleep = true;
+						}
+					}
+					if ($approved_wake)
+                {
+                	echo "<p>Approved. Sending WOL Command...</p>";
+					exec ('wakeonlan ' . $COMPUTER_MAC[$selectedComputer]);
+					$log = date("Y-m-d h:i:sa") . ": Approved. Sending WOL Command to  " . $COMPUTER_NAME[$selectedComputer] . "..." . PHP_EOL;
+					file_put_contents($LOGFILE, $log, FILE_APPEND);
+					
+				}
+				elseif ($approved_sleep)
+				{
+					echo "<p>Approved. Sending Sleep Command...</p>";
+					$log = date("Y-m-d h:i:sa") . ": Approved. Sending Sleep Command to " . $COMPUTER_NAME[$selectedComputer] . "..." .  PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
+					$ch = curl_init();
+					curl_setopt($ch, CURLOPT_URL, "http://" . $COMPUTER_LOCAL_IP[$selectedComputer] . ":" . $COMPUTER_SLEEP_CMD_PORT . "/" .  $COMPUTER_SLEEP_CMD);
+					curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+					curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+					
+					if (curl_exec($ch) === false)
+					{
+						echo "<p><span style='color:#CC0000;'><b>Command Failed:</b></span> " . curl_error($ch) . "</p>";
+						$log = date("Y-m-d h:i:sa") . ": Command Failed: " . curl_error($ch) . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
+					}
+					else
+					{
+						echo "<p><span style='color:#00CC00;'><b>Command Succeeded!</b></span> Waiting for " . $COMPUTER_NAME[$selectedComputer] . " to go to sleep...</p><p>";
+						$log = date("Y-m-d h:i:sa") . ": Command Succeeded! Waiting for" . $COMPUTER_NAME[$selectedComputer] . " to go to sleep..." . PHP_EOL;
+					file_put_contents($LOGFILE, $log, FILE_APPEND);
+						$count = 1;
+						$down = false;
+						while ($count <= $MAX_PINGS && $down == false)
+						{
+							echo "Ping " . $count . "...";
+							$pinginfo = exec("ping -c 1 " . $COMPUTER_LOCAL_IP[$selectedComputer]);
+							$count++;
+							if ($pinginfo == "")
+							{
+								$down = true;
+								echo "<span style='color:#00CC00;'><b>It's Asleep!</b></span><br />";
+								echo "<p><a href='?computer=" . $selectedComputer . "'>Return to the Wake/Sleep Control Home</a></p>";
+								$show_form = false;
+								$log = date("Y-m-d h:i:sa") . ": " . $COMPUTER_NAME[$selectedComputer] . " is Alseep" . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
+								
+							}
+							else
+							{
+								
+								echo "<span style='color:#CC0000;'><b>Still Awake.</b></span><br />";
+							}
+							sleep($SLEEP_TIME);
+						}
+						echo "</p>";
+						if ($down == false)
+						{
+							echo "<p style='color:#CC0000;'><b>FAILED!</b> " . $COMPUTER_NAME[$selectedComputer] . " doesn't seem to be falling asleep... Try again?</p><p>(Or <a href='?computer=" . $selectedComputer . "'>Return to the Wake/Sleep Control Home</a>.)</p>";
+							$log = date("Y-m-d h:i:sa") . ": FAILED! " . $COMPUTER_NAME[$selectedComputer] . " doesn't seem to be falling asleep..." . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
+						}
+					}
+					curl_close($ch);
+				}
+				}
+
 
 ?>
 
@@ -103,7 +187,7 @@ else
     	<form class="form-signin" method="post">
         	<h3 class="form-signin-heading">
 			<?php
-				//print_r($_POST); //Useful for POST Debugging
+				// print_r($_POST); //Useful for POST Debugging
 				$approved_wake = false;
 				$approved_sleep = false;
 				if ( isset($_POST['password']) )
@@ -179,6 +263,8 @@ else
                 {
                 	echo "<p>Approved. Sending WOL Command...</p>";
 					exec ('wakeonlan ' . $COMPUTER_MAC[$selectedComputer]);
+					$log = date("Y-m-d h:i:sa") . ": Command Sent. Waiting for " . $COMPUTER_NAME[$selectedComputer] . " to wake up..." . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 					echo "<p>Command Sent. Waiting for " . $COMPUTER_NAME[$selectedComputer] . " to wake up...</p><p>";
 					$count = 1;
 					$down = true;
@@ -193,6 +279,8 @@ else
 							echo "<span style='color:#00CC00;'><b>It's Alive!</b></span><br />";
 							echo "<p><a href='?computer=" . $selectedComputer . "'>Return to the Wake/Sleep Control Home</a></p>";
 							$show_form = false;
+							$log = date("Y-m-d h:i:sa") . ": " . $COMPUTER_NAME[$selectedComputer] . " is Alive" . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 						}
 						else
 						{
@@ -204,11 +292,15 @@ else
 					if ($down == true)
 					{
 						echo "<p style='color:#CC0000;'><b>FAILED!</b> " . $COMPUTER_NAME[$selectedComputer] . " doesn't seem to be waking up... Try again?</p><p>(Or <a href='?computer=" . $selectedComputer . "'>Return to the Wake/Sleep Control Home</a>.)</p>";
+						$log = date("Y-m-d h:i:sa") . ": FAILED!" . $COMPUTER_NAME[$selectedComputer] . " doesn't seem to be waking up..." . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 					}
 				}
 				elseif ($approved_sleep)
 				{
 					echo "<p>Approved. Sending Sleep Command...</p>";
+					$log = date("Y-m-d h:i:sa") . ": Approved. Sending Sleep Command to " . $COMPUTER_NAME[$selectedComputer] . "..." . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 					$ch = curl_init();
 					curl_setopt($ch, CURLOPT_URL, "http://" . $COMPUTER_LOCAL_IP[$selectedComputer] . ":" . $COMPUTER_SLEEP_CMD_PORT . "/" .  $COMPUTER_SLEEP_CMD);
 					curl_setopt($ch, CURLOPT_TIMEOUT, 5);
@@ -217,10 +309,14 @@ else
 					if (curl_exec($ch) === false)
 					{
 						echo "<p><span style='color:#CC0000;'><b>Command Failed:</b></span> " . curl_error($ch) . "</p>";
+						$log = date("Y-m-d h:i:sa") . ": Command Failed: " . curl_error($ch) . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 					}
 					else
 					{
 						echo "<p><span style='color:#00CC00;'><b>Command Succeeded!</b></span> Waiting for " . $COMPUTER_NAME[$selectedComputer] . " to go to sleep...</p><p>";
+						$log = date("Y-m-d h:i:sa") . ":" . $COMPUTER_NAME[$selectedComputer] . " is Going to Sleep" . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 						$count = 1;
 						$down = false;
 						while ($count <= $MAX_PINGS && $down == false)
@@ -234,6 +330,8 @@ else
 								echo "<span style='color:#00CC00;'><b>It's Asleep!</b></span><br />";
 								echo "<p><a href='?computer=" . $selectedComputer . "'>Return to the Wake/Sleep Control Home</a></p>";
 								$show_form = false;
+								$log = date("Y-m-d h:i:sa") . ":" . $selectedComputer . " is Alseep" . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 								
 							}
 							else
@@ -246,6 +344,8 @@ else
 						if ($down == false)
 						{
 							echo "<p style='color:#CC0000;'><b>FAILED!</b> " . $COMPUTER_NAME[$selectedComputer] . " doesn't seem to be falling asleep... Try again?</p><p>(Or <a href='?computer=" . $selectedComputer . "'>Return to the Wake/Sleep Control Home</a>.)</p>";
+							$log = date("Y-m-d h:i:sa") . ": FAILED! " . $COMPUTER_NAME[$selectedComputer] . " doesn't seem to be falling asleep..." . PHP_EOL;
+								file_put_contents($LOGFILE, $log, FILE_APPEND);
 						}
 					}
 					curl_close($ch);
